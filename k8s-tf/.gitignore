@@ -1,0 +1,49 @@
+# Local environment files
+.envrc
+.env
+
+# Terraform files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+tfplan
+*.log
+
+# Generated files
+kind-config-generated.yaml
+
+# Credentials and secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.json
+kubeconfig
+kubeconfig.json
+credentials/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.backup
+*.bak
+
+# Temporary files
+tmp/
+temp/
