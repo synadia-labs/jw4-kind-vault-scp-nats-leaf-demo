@@ -1,544 +1,265 @@
 # Synadia Control Plane Implementation Plan
 
-## Architecture Overview
+## Overview
 
-Synadia Control Plane (SCP) provides centralized management for NATS deployments. This implementation deploys SCP on Kubernetes, configures it for multi-tenant operation, and integrates with Vault for certificate management.
+Deploy Synadia Control Plane (SCP) for demo purposes with minimal complexity. This implementation focuses on getting SCP running quickly with basic functionality.
 
-## Architecture Components
+## Architecture
 
-### 1. SCP Core Components
-- **Control Plane Server**: Main SCP application
-- **PostgreSQL Database**: Persistent storage for configuration
-- **Redis Cache**: Session management and caching
-- **MinIO/S3**: Object storage for artifacts
+```
+┌─────────────────────────┐
+│   Synadia Control Plane │
+│    (Single Instance)    │
+└───────────┬─────────────┘
+            │
+      ┌─────┴─────┐
+      │           │
+┌─────▼─────┐ ┌──▼────────┐
+│PostgreSQL │ │  Vault    │
+│(Built-in) │ │(For Certs)│
+└───────────┘ └───────────┘
+```
 
-### 2. Multi-Tenancy Architecture
-- **Teams**: Organizational units for isolation
-- **Projects**: Logical groupings within teams
-- **Systems**: NATS cluster configurations
-- **Accounts**: NATS account management
+## Prerequisites
 
-### 3. Integration Points
-- **Vault Integration**: Certificate generation and management
-- **Kubernetes Integration**: Service discovery and deployment
-- **NATS Integration**: Direct management of NATS clusters
-- **Auth Integration**: OIDC/SAML support
-
-### 4. API Architecture
-- **REST API**: Primary management interface
-- **GraphQL API**: Advanced querying capabilities
-- **WebSocket**: Real-time updates
-- **gRPC**: High-performance operations
+1. Kubernetes cluster running (from k8s-tf)
+2. Vault configured with ClusterIssuer (from vault-tf)
+3. SCP works without a license for evaluation
 
 ## Implementation Steps
 
-### Phase 1: Prerequisites
+### Step 1: Create Namespace and License Secret
 
-1. **Verify Dependencies**
-   ```bash
-   # Check Kubernetes cluster
-   kubectl cluster-info
-   kubectl get nodes
-   
-   # Verify Vault is running
-   kubectl get pods -n vault
-   
-   # Create SCP namespace
-   kubectl create namespace scp
-   ```
+```bash
+# Create namespace
+kubectl create namespace scp
 
-2. **Obtain SCP License**
-   - Contact Synadia for license key
-   - Store license securely
+# No license required for evaluation
+```
 
-3. **Storage Class Verification**
-   ```bash
-   # Check available storage classes
-   kubectl get storageclass
-   ```
+### Step 2: Deploy SCP via Helm
 
-### Phase 2: Terraform Configuration
+Simple values.yaml for demo:
 
-1. **Directory Structure**
-   ```
-   scp-tf/
-   ├── main.tf              # SCP deployment
-   ├── variables.tf         # Input variables
-   ├── outputs.tf          # Output values
-   ├── helm.tf             # Helm deployment
-   ├── database.tf         # PostgreSQL configuration
-   ├── redis.tf            # Redis cache setup
-   ├── storage.tf          # MinIO/S3 configuration
-   ├── ingress.tf          # Ingress configuration
-   ├── secrets.tf          # Secret management
-   ├── teams.tf            # Team/project setup
-   └── values/
-       └── scp-values.yaml  # Helm values
-   ```
+```yaml
+# values.yaml
+global:
+  # No license configuration required for evaluation
 
-2. **License Secret Creation**
-   ```hcl
-   resource "kubernetes_secret" "scp_license" {
-     metadata {
-       name      = "scp-license"
-       namespace = "scp"
-     }
-     
-     data = {
-       "license.jwt" = var.scp_license
-     }
-   }
-   ```
+controlPlane:
+  # Single instance for demo
+  replicas: 1
 
-### Phase 3: Database Deployment
+  # Use NodePort for easy access
+  service:
+    type: NodePort
+    nodePort: 30080
 
-1. **PostgreSQL Setup** (`database.tf`)
-   ```hcl
-   resource "helm_release" "postgresql" {
-     name       = "scp-postgresql"
-     namespace  = "scp"
-     repository = "https://charts.bitnami.com/bitnami"
-     chart      = "postgresql"
-     version    = var.postgresql_version
-     
-     values = [
-       yamlencode({
-         auth = {
-           database = "scp"
-           username = "scp"
-           password = random_password.db_password.result
-         }
-         primary = {
-           persistence = {
-             size = "50Gi"
-           }
-         }
-         metrics = {
-           enabled = true
-         }
-       })
-     ]
-   }
-   ```
+  # Simple resource limits
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 1000m
 
-2. **Database Migration Setup**
-   - Automatic schema management
-   - Backup configuration
+# Use embedded database for demo
+postgresql:
+  enabled: true
+  persistence:
+    size: 10Gi
 
-### Phase 4: Cache Layer Deployment
+# Disable complex features for demo
+monitoring:
+  enabled: false
 
-1. **Redis Configuration** (`redis.tf`)
-   ```hcl
-   resource "helm_release" "redis" {
-     name       = "scp-redis"
-     namespace  = "scp"
-     repository = "https://charts.bitnami.com/bitnami"
-     chart      = "redis"
-     version    = var.redis_version
-     
-     values = [
-       yamlencode({
-         auth = {
-           enabled  = true
-           password = random_password.redis_password.result
-         }
-         master = {
-           persistence = {
-             size = "10Gi"
-           }
-         }
-         replica = {
-           replicaCount = 2
-         }
-       })
-     ]
-   }
-   ```
+ingress:
+  enabled: false
+```
 
-### Phase 5: Object Storage Setup
+Deploy with Helm:
 
-1. **MinIO Deployment** (`storage.tf`)
-   ```hcl
-   resource "helm_release" "minio" {
-     name       = "scp-minio"
-     namespace  = "scp"
-     repository = "https://charts.min.io"
-     chart      = "minio"
-     version    = var.minio_version
-     
-     values = [
-       yamlencode({
-         mode = "distributed"
-         replicas = 4
-         persistence = {
-           size = "100Gi"
-         }
-         buckets = [
-           {
-             name   = "scp-artifacts"
-             policy = "none"
-           }
-         ]
-       })
-     ]
-   }
-   ```
+```bash
+helm repo add synadia https://synadia-io.github.io/helm-charts
+helm repo update
 
-### Phase 6: SCP Deployment
+helm install scp synadia/control-plane \
+  --namespace scp \
+  --values values.yaml
+```
 
-1. **Helm Values Configuration** (`values/scp-values.yaml`)
-   ```yaml
-   global:
-     image:
-       repository: synadia/control-plane
-       tag: latest
-   
-   controlPlane:
-     replicas: 3
-     
-     config:
-       database:
-         type: postgres
-         host: scp-postgresql
-         port: 5432
-         name: scp
-         user: scp
-       
-       cache:
-         type: redis
-         host: scp-redis-master
-         port: 6379
-       
-       storage:
-         type: s3
-         endpoint: http://scp-minio:9000
-         bucket: scp-artifacts
-       
-       vault:
-         enabled: true
-         address: https://vault.vault:8200
-         auth:
-           method: kubernetes
-           role: scp
-   
-     license:
-       secretName: scp-license
-       key: license.jwt
-   ```
+### Step 3: Initialize Admin User
 
-2. **Deploy SCP** (`helm.tf`)
-   ```hcl
-   resource "helm_release" "scp" {
-     name       = "scp"
-     namespace  = "scp"
-     repository = "https://charts.synadia.com"
-     chart      = "control-plane"
-     version    = var.scp_version
-     
-     values = [
-       templatefile("${path.module}/values/scp-values.yaml", {
-         db_password    = random_password.db_password.result
-         redis_password = random_password.redis_password.result
-         minio_access   = random_string.minio_access.result
-         minio_secret   = random_password.minio_secret.result
-         vault_token    = var.vault_token
-       })
-     ]
-     
-     depends_on = [
-       helm_release.postgresql,
-       helm_release.redis,
-       helm_release.minio
-     ]
-   }
-   ```
+```bash
+# Wait for SCP to be ready
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=control-plane -n scp --timeout=300s
 
-### Phase 7: Ingress Configuration
+# Port forward to access SCP
+kubectl port-forward -n scp svc/scp-control-plane 8080:80 &
 
-1. **Ingress Setup** (`ingress.tf`)
-   ```hcl
-   resource "kubernetes_ingress_v1" "scp" {
-     metadata {
-       name      = "scp-ingress"
-       namespace = "scp"
-       annotations = {
-         "cert-manager.io/cluster-issuer" = "vault-issuer"
-         "nginx.ingress.kubernetes.io/backend-protocol" = "HTTPS"
-       }
-     }
-     
-     spec {
-       tls {
-         hosts = [var.scp_domain]
-         secret_name = "scp-tls"
-       }
-       
-       rule {
-         host = var.scp_domain
-         http {
-           path {
-             path = "/"
-             path_type = "Prefix"
-             backend {
-               service {
-                 name = "scp"
-                 port {
-                   number = 443
-                 }
-               }
-             }
-           }
-         }
-       }
-     }
-   }
-   ```
+# Generate admin password
+ADMIN_PWD=$(openssl rand -base64 16)
 
-### Phase 8: Initial Configuration
+# Create admin user with token
+RESPONSE=$(curl -X POST http://localhost:8080/api/core/beta/admin/app-user \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PWD\",\"generate_token\":true}")
 
-1. **Bootstrap Admin User**
-   ```bash
-   # Get initial admin password
-   kubectl get secret -n scp scp-admin-password \
-     -o jsonpath='{.data.password}' | base64 -d
-   
-   # Login to SCP
-   scp login --server https://${SCP_DOMAIN} \
-     --user admin \
-     --password <initial-password>
-   ```
+# Extract token
+export SCP_TOKEN=$(echo "$RESPONSE" | jq -r '.token')
+```
 
-2. **Create API Token**
-   ```bash
-   # Generate long-lived API token
-   scp token create --name terraform \
-     --expiry 365d \
-     --scope admin > scp-token.json
-   ```
+### Step 4: Store Credentials
 
-### Phase 9: Team and Project Setup
+Create a Kubernetes secret with credentials:
 
-1. **Create Team via Terraform** (`teams.tf`)
-   ```hcl
-   resource "restapi_object" "team" {
-     path = "/api/v1/teams"
-     data = jsonencode({
-       name        = "demo-team"
-       description = "Demo team for Demo integration"
-     })
-     
-     depends_on = [helm_release.scp]
-   }
-   
-   resource "restapi_object" "project" {
-     path = "/api/v1/teams/${restapi_object.team.id}/projects"
-     data = jsonencode({
-       name        = "demo-project"
-       description = "Demo device management project"
-     })
-   }
-   ```
+```bash
+kubectl create secret generic scp-credentials \
+  --from-literal=admin-password="$ADMIN_PWD" \
+  --from-literal=api-token="$SCP_TOKEN" \
+  --from-literal=api-url="http://scp-control-plane.scp:8080" \
+  -n scp
+```
 
-2. **Create NATS System**
-   ```hcl
-   resource "restapi_object" "nats_system" {
-     path = "/api/v1/projects/${restapi_object.project.id}/systems"
-     data = jsonencode({
-       name        = "demo-nats"
-       description = "NATS system for Demo devices"
-       config = {
-         operator_mode = true
-         auth_callout  = true
-         leaf_nodes    = true
-       }
-     })
-   }
-   ```
+### Step 5: Create Demo Team and System
 
-### Phase 10: Vault Integration
+```bash
+# Create team
+curl -X POST http://localhost:8080/api/core/beta/teams \
+  -H "Authorization: Bearer $SCP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"demo-team"}' \
+  -o team.json
 
-1. **Configure Vault Auth for SCP**
-   ```bash
-   # Create policy for SCP
-   vault policy write scp-policy - <<EOF
-   path "pki-int/issue/nats-cluster" {
-     capabilities = ["create", "update"]
-   }
-   path "pki-int/issue/scp-internal" {
-     capabilities = ["create", "update"]
-   }
-   EOF
-   
-   # Create Kubernetes auth role
-   vault write auth/kubernetes/role/scp \
-     bound_service_account_names=scp \
-     bound_service_account_namespaces=scp \
-     policies=scp-policy \
-     ttl=24h
-   ```
+TEAM_ID=$(jq -r '.id' team.json)
 
-2. **Enable Certificate Management**
-   - Configure SCP to request certificates from Vault
-   - Set up automatic renewal
+# Create system
+curl -X POST "http://localhost:8080/api/core/beta/teams/$TEAM_ID/systems" \
+  -H "Authorization: Bearer $SCP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"demo-system","description":"Demo System"}' \
+  -o system.json
 
-### Phase 11: Auth Callout Configuration
+SYSTEM_ID=$(jq -r '.id' system.json)
+```
 
-1. **Deploy Auth Service**
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: nats-auth-service
-     namespace: scp
-   spec:
-     replicas: 3
-     template:
-       spec:
-         containers:
-         - name: auth-service
-           image: synadia/nats-auth-callout
-           env:
-           - name: SCP_URL
-             value: https://scp:443
-           - name: SCP_TOKEN
-             valueFrom:
-               secretKeyRef:
-                 name: scp-auth-token
-                 key: token
-   ```
+## Terraform Implementation
 
-2. **Configure Auth Policies**
-   - Device authentication rules
-   - Subject permissions
-   - Rate limiting
+### Directory Structure
 
-### Phase 12: Monitoring Setup
+```
+scp-tf/
+├── main.tf              # Main configuration
+├── variables.tf         # Input variables
+├── outputs.tf          # Output values
+├── versions.tf         # Provider versions
+├── values.yaml         # Helm values
+├── scripts/
+│   └── init-admin.sh   # Admin initialization script
+└── Makefile            # Simple commands
+```
 
-1. **Enable Metrics Export**
-   ```yaml
-   monitoring:
-     prometheus:
-       enabled: true
-       port: 9090
-     grafana:
-       enabled: true
-       dashboards:
-         - scp-overview
-         - nats-systems
-         - auth-metrics
-   ```
+### main.tf
 
-2. **Configure Alerts**
-   - System health
-   - License expiration
-   - Resource usage
+```hcl
+# Deploy SCP using Helm
+resource "helm_release" "scp" {
+  name             = "scp"
+  repository       = "https://synadia-io.github.io/helm-charts"
+  chart            = "control-plane"
+  namespace        = var.scp_namespace
+  create_namespace = true
 
-### Phase 13: Output Configuration
+  values = [file("${path.module}/values.yaml")]
 
-1. **Generate Outputs** (`outputs.tf`)
-   ```hcl
-   output "scp_credentials" {
-     value = {
-       api_endpoint = "https://${var.scp_domain}/api/v1"
-       console_url  = "https://${var.scp_domain}"
-       api_token    = var.scp_api_token
-     }
-     sensitive = true
-   }
-   
-   output "team_id" {
-     value = restapi_object.team.id
-   }
-   
-   output "project_id" {
-     value = restapi_object.project.id
-   }
-   
-   output "system_config" {
-     value = restapi_object.nats_system.api_response
-   }
-   ```
+  # No license configuration required
+}
 
-2. **Create Credentials File**
-   ```hcl
-   resource "local_file" "scp_creds" {
-     content = jsonencode({
-       api_endpoint = "https://${var.scp_domain}/api/v1"
-       console_url  = "https://${var.scp_domain}"
-       api_token    = var.scp_api_token
-       team_id      = restapi_object.team.id
-       project_id   = restapi_object.project.id
-       system_id    = restapi_object.nats_system.id
-     })
-     filename = "${path.module}/scp-credentials.json"
-   }
-   ```
+# Initialize admin and get credentials
+resource "null_resource" "init_admin" {
+  depends_on = [helm_release.scp]
 
-### Phase 14: Validation
+  provisioner "local-exec" {
+    command = "bash ${path.module}/scripts/init-admin.sh"
 
-1. **API Connectivity Test**
-   ```bash
-   # Test API access
-   curl -H "Authorization: Bearer ${SCP_TOKEN}" \
-     https://${SCP_DOMAIN}/api/v1/systems
-   
-   # Get system configuration
-   scp system get demo-nats
-   ```
+    environment = {
+      NAMESPACE  = var.scp_namespace
+      KUBECONFIG = var.kubeconfig_path
+    }
+  }
+}
 
-2. **Generate NATS Configuration**
-   ```bash
-   # Export operator JWT
-   scp system operator-jwt demo-nats > operator.jwt
-   
-   # Export system account
-   scp system account demo-nats SYS > sys-account.jwt
-   ```
+# Store credentials as secret
+resource "kubernetes_secret" "scp_credentials" {
+  depends_on = [null_resource.init_admin]
 
-## Best Practices
+  metadata {
+    name      = "scp-credentials"
+    namespace = var.scp_namespace
+  }
 
-1. **Security**
-   - Use strong passwords
-   - Enable MFA for users
-   - Rotate API tokens regularly
-   - Implement RBAC
+  data = {
+    admin-password = file("${path.module}/.admin-password")
+    api-token      = file("${path.module}/.api-token")
+    api-url        = "http://scp-control-plane.${var.scp_namespace}:8080"
+  }
+}
+```
 
-2. **High Availability**
-   - Deploy multiple replicas
-   - Use anti-affinity rules
-   - Configure health checks
-   - Implement backup strategy
+## Usage
 
-3. **Operations**
-   - Monitor resource usage
-   - Set up alerting
-   - Regular backups
-   - Plan for upgrades
+### Quick Start
 
-## Troubleshooting Guide
+```bash
+# Deploy SCP
+make apply
 
-1. **Common Issues**
-   - Database connection failures
-   - License validation errors
-   - Vault integration problems
-   - API authentication issues
+# Get admin password
+make get-password
 
-2. **Debug Commands**
-   ```bash
-   # Check SCP pods
-   kubectl get pods -n scp
-   
-   # View SCP logs
-   kubectl logs -n scp deployment/scp
-   
-   # Test database connectivity
-   kubectl exec -n scp deployment/scp -- scp db test
-   ```
+# Access UI
+make port-forward
+# Browse to http://localhost:8080
+```
 
-## Outputs for Downstream Projects
+### Access API
 
-- SCP API endpoint and credentials
-- Team and Project IDs
-- NATS system configuration
-- Operator JWT and system account
-- Auth callout service endpoint
+```bash
+# Get API token
+export SCP_TOKEN=$(kubectl get secret -n scp scp-credentials \
+  -o jsonpath='{.data.api-token}' | base64 -d)
+
+# List teams
+curl -H "Authorization: Bearer $SCP_TOKEN" \
+  http://localhost:8080/api/core/beta/teams
+```
+
+## Outputs
+
+- `admin_password`: Admin user password
+- `api_token`: API token for automation
+- `api_url`: SCP API endpoint
+- `console_url`: Web UI access URL
+
+## Notes for Demo
+
+1. **Simplifications:**
+   - Single instance (no HA)
+   - Built-in PostgreSQL
+   - NodePort for easy access
+   - No monitoring/metrics
+   - Basic auth only
+
+2. **Security:**
+   - This is for DEMO only
+   - Use proper ingress with TLS in production
+   - Enable RBAC and MFA in production
+   - Rotate credentials regularly
+
+3. **Next Steps:**
+   - Create NATS systems via SCP
+   - Configure accounts and users
+   - Generate NATS configurations
+
