@@ -1,0 +1,56 @@
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate*
+terraform.tfstate.backup
+*.tfplan
+*.tfvars
+!example.tfvars
+
+# Generated files
+values.yaml
+.operator-jwt
+.system-account
+.system-account-id
+.resolver-preload
+.team-id
+.system-id
+.leaf-account-id
+.leaf-credentials
+.leaf-jwt
+.leaf-group-id
+.leaf-user-id
+.leaf-user-credentials.json
+.leaf-user.creds
+
+# Credential files
+*.creds
+*.jwt
+*.key
+*.pem
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Crash log files
+crash.log
+crash.*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+.temp*

@@ -16,7 +16,7 @@ This project provisions a core NATS instance using the official NATS Helm chart.
 
 - Kubernetes cluster (from k8s-tf project)
 - Vault instance for certificates (from vault-tf project)
-- SCP instance configured (from scp-tf project)
+- SCP instance configured (from scp-tf project) with credentials in `.api-token`
 - Terraform >= 1.0
 - Helm >= 3.0
 
@@ -30,17 +30,24 @@ This project provisions a core NATS instance using the official NATS Helm chart.
 ## Usage
 
 ```bash
-terraform init
-terraform plan
-terraform apply
+# Setup NATS system in SCP (reads credentials from ../scp-tf/.api-token)
+make setup-system
+
+# Deploy NATS cluster
+make apply
+
+# Test the deployment
+make test
 ```
 
 ## Configuration
 
 Key components:
+
 - NATS Helm chart deployment
 - Operator mode configuration from SCP
 - Auth callout service configuration
 - TLS certificates from Vault
 - Leaf node authorization settings
 - Monitoring and metrics endpoints
+
