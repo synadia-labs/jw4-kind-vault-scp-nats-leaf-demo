@@ -17,9 +17,24 @@ This project provisions a NATS leaf node cluster that connects to the core NATS 
 - Kubernetes cluster (from k8s-tf project)
 - Vault instance for certificates (from vault-tf project)
 - NATS core cluster running (from nats-core-tf project)
-- Leaf node credentials from core cluster
+- Leaf node credentials from core cluster (run `make setup-leaf-account` in nats-core-tf)
 - Terraform >= 1.0
 - Helm >= 3.0
+
+## Prerequisites
+
+Before deploying the leaf cluster:
+
+1. Ensure NATS core is deployed and running
+2. Set up the leaf account in the core cluster:
+   ```bash
+   cd ../nats-core-tf
+   make setup-leaf-account
+   ```
+3. Verify the leaf credentials file exists:
+   ```bash
+   ls ../nats-core-tf/.leaf-jwt
+   ```
 
 ## Outputs
 
