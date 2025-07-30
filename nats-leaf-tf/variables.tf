@@ -1,15 +1,45 @@
 # Leaf NATS Cluster Variables
 
+variable "kubeconfig_path" {
+  description = "Path to kubeconfig file"
+  type        = string
+  default     = ""
+}
+
 variable "nats_namespace" {
   description = "Kubernetes namespace for NATS leaf cluster"
   type        = string
   default     = "leaf-nats"
 }
 
+variable "release_name" {
+  description = "Helm release name"
+  type        = string
+  default     = "nats-leaf"
+}
+
+variable "helm_repository" {
+  description = "NATS Helm repository URL"
+  type        = string
+  default     = "https://nats-io.github.io/k8s/helm/charts/"
+}
+
+variable "helm_chart" {
+  description = "NATS Helm chart name"
+  type        = string
+  default     = "nats"
+}
+
 variable "helm_chart_version" {
   description = "NATS Helm chart version"
   type        = string
-  default     = "1.2.2"
+  default     = "1.3.9"
+}
+
+variable "helm_timeout" {
+  description = "Helm deployment timeout"
+  type        = number
+  default     = 600
 }
 
 variable "cluster_size" {
@@ -39,7 +69,7 @@ variable "leaf_remote_url" {
 variable "leaf_credentials" {
   description = "Path to leaf node credentials file"
   type        = string
-  default     = "../nats-core-tf/.leaf-jwt"
+  default     = "../nats-core-tf/.leaf.creds"
 }
 
 variable "enable_monitoring" {
@@ -71,3 +101,4 @@ variable "resources" {
     }
   }
 }
+

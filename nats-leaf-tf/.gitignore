@@ -3,10 +3,18 @@
 .terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
-tfplan
+terraform.tfplan
 *.tfvars
 !example.tfvars
 
 # Credentials
 .leaf.creds
+.operator-jwt
+.system-account
+.system-account-id
+.resolver-preload
+.leaf-account-id
 values.yaml
+
+# Generated files
+.temp-*

@@ -4,11 +4,23 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+      version = ">= 2.23"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.0"
+      version = ">= 2.11"
     }
   }
 }
+
+# Configure providers
+provider "kubernetes" {
+  config_path = var.kubeconfig_path != "" ? var.kubeconfig_path : null
+}
+
+provider "helm" {
+  kubernetes = {
+    config_path = var.kubeconfig_path != "" ? var.kubeconfig_path : null
+  }
+}
+

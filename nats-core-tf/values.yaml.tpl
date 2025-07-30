@@ -1,12 +1,6 @@
 # NATS Core Helm Values
 # Generated from template - DO NOT EDIT DIRECTLY
 
-container:
-  image:
-    repository: nats
-    tag: 2.10-alpine
-    pullPolicy: IfNotPresent
-
 config:
   cluster:
     enabled: true

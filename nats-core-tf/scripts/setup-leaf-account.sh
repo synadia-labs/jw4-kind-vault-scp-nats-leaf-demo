@@ -138,125 +138,81 @@ LEAF_USER_NAME="${LEAF_USER_NAME:-leaf-user}"
 echo ""
 echo "=== Group and User Setup ==="
 
-# Check if account-level groups are supported (read-only check)
-echo "Checking SCP group management capabilities..."
+# Get signing key groups for the account
+echo "Fetching signing key groups for LEAF_ACCOUNT..."
 GROUP_RESPONSE=$(curl -s -H "Authorization: Bearer $SCP_TOKEN" \
-  "http://localhost:8080/api/core/beta/systems/$SYSTEM_ID/accounts/$LEAF_ACCOUNT_ID/account-sk-groups" 2>/dev/null || echo '{"items":[]}')
+  "http://localhost:8080/api/core/beta/accounts/$LEAF_ACCOUNT_ID/account-sk-groups")
 
-if echo "$GROUP_RESPONSE" | jq -e '.items' >/dev/null 2>&1; then
-  # Groups endpoint exists, check for existing groups
-  EXISTING_GROUPS=$(echo "$GROUP_RESPONSE" | jq -r '.items[]?.name' 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
+# Find the Default group
+DEFAULT_GROUP_ID=$(echo "$GROUP_RESPONSE" | jq -r '.items[] | select(.name == "Default") | .id')
 
-  if [ ! -z "$EXISTING_GROUPS" ]; then
-    echo "✓ Found existing groups in LEAF_ACCOUNT: $EXISTING_GROUPS"
-  else
-    echo "! No groups found in LEAF_ACCOUNT"
-  fi
-
-  # Note: Based on SCP logs, group creation via API returns 404 (not supported)
-  echo ""
-  echo "📋 Manual Group and User Setup Required:"
-  echo "   The SCP API does not support creating groups and users programmatically."
-  echo "   Please use the SCP Web UI to complete the setup:"
-  echo ""
-  echo "   1. Open SCP Web UI: http://localhost:8080 (requires 'make port-forward')"
-  echo "   2. Navigate to Systems → nats-core → Accounts → LEAF_ACCOUNT"
-  echo "   3. Create a new group named '$LEAF_GROUP_NAME'"
-  echo "   4. Create a new user named '$LEAF_USER_NAME' in the '$LEAF_GROUP_NAME' group"
-  echo "   5. Download the user credentials (JWT + key) for leaf node authentication"
-  echo ""
-  echo "   Alternative: Use NSC (NATS Security CLI) with the account signing keys"
-  echo "   from the account JWT to create users locally."
-
-else
-  echo "! No existing groups found - will attempt to create group"
-  
-  # Try to create the group using account-sk-groups endpoint
-  echo "Creating group '$LEAF_GROUP_NAME'..."
-  CREATE_GROUP_RESPONSE=$(curl -s -X POST \
-    "http://localhost:8080/api/core/beta/systems/$SYSTEM_ID/accounts/$LEAF_ACCOUNT_ID/account-sk-groups" \
-    -H "Authorization: Bearer $SCP_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\": \"$LEAF_GROUP_NAME\"}" 2>/dev/null)
-
-  LEAF_GROUP_ID=$(echo "$CREATE_GROUP_RESPONSE" | jq -r '.id // empty' 2>/dev/null)
-
-  if [ ! -z "$LEAF_GROUP_ID" ] && [ "$LEAF_GROUP_ID" != "null" ]; then
-    echo "✓ Created group '$LEAF_GROUP_NAME' with ID: $LEAF_GROUP_ID"
-    echo "$LEAF_GROUP_ID" > "$ROOT_DIR/.leaf-group-id"
-    
-    # Create user in the new group
-    echo "Creating user '$LEAF_USER_NAME' in group '$LEAF_GROUP_NAME'..."
-    CREATE_USER_RESPONSE=$(curl -s -X POST \
-      "http://localhost:8080/api/core/beta/systems/$SYSTEM_ID/accounts/$LEAF_ACCOUNT_ID/account-sk-groups/$LEAF_GROUP_ID/users" \
-      -H "Authorization: Bearer $SCP_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d "{\"name\": \"$LEAF_USER_NAME\"}" 2>/dev/null)
-
-    LEAF_USER_ID=$(echo "$CREATE_USER_RESPONSE" | jq -r '.id // empty' 2>/dev/null)
-
-    if [ ! -z "$LEAF_USER_ID" ] && [ "$LEAF_USER_ID" != "null" ]; then
-      echo "✓ Created user '$LEAF_USER_NAME' with ID: $LEAF_USER_ID"
-      echo "$LEAF_USER_ID" > "$ROOT_DIR/.leaf-user-id"
-      
-      # Get user credentials
-      echo "Fetching user credentials..."
-      USER_CREDS_RESPONSE=$(curl -s -H "Authorization: Bearer $SCP_TOKEN" \
-        "http://localhost:8080/api/core/beta/systems/$SYSTEM_ID/accounts/$LEAF_ACCOUNT_ID/account-sk-groups/$LEAF_GROUP_ID/users/$LEAF_USER_ID/credentials" 2>/dev/null)
-      
-      if echo "$USER_CREDS_RESPONSE" | jq -e '.jwt' >/dev/null 2>&1; then
-        echo "$USER_CREDS_RESPONSE" > "$ROOT_DIR/.leaf-user-credentials.json"
-        
-        # Create proper NATS credentials file
-        USER_JWT=$(echo "$USER_CREDS_RESPONSE" | jq -r '.jwt')
-        USER_SEED=$(echo "$USER_CREDS_RESPONSE" | jq -r '.seed // empty')
-        
-        cat > "$ROOT_DIR/.leaf-user.creds" <<EOF
------BEGIN NATS USER JWT-----
-$USER_JWT
-------END NATS USER JWT------
-
-************************* IMPORTANT *************************
-NKEY Seed printed below can be used to sign and prove identity.
-NKEYs are sensitive and should be treated as secrets.
-
------BEGIN USER NKEY SEED-----
-$USER_SEED
-------END USER NKEY SEED------
-
-*************************************************************
-EOF
-        echo "✓ User credentials saved to .leaf-user.creds"
-      else
-        echo "! Could not fetch user credentials"
-      fi
-    else
-      echo "! Failed to create user"
-      echo "Response: $CREATE_USER_RESPONSE"
-    fi
-  else
-    echo "! Failed to create group"
-    echo "Response: $CREATE_GROUP_RESPONSE"
-  fi
+if [ -z "$DEFAULT_GROUP_ID" ] || [ "$DEFAULT_GROUP_ID" == "null" ]; then
+  echo "ERROR: Could not find Default signing key group"
+  echo "Groups found: $(echo "$GROUP_RESPONSE" | jq -r '.items[].name' | tr '\n' ', ')"
+  exit 1
 fi
+
+echo "✓ Found Default signing key group with ID: $DEFAULT_GROUP_ID"
+
+# Create a user in the Default group
+LEAF_USER_NAME="${LEAF_USER_NAME:-leaf-user}"
+echo "Creating NATS user '$LEAF_USER_NAME' in Default group..."
+
+CREATE_USER_RESPONSE=$(curl -s -X POST \
+  "http://localhost:8080/api/core/beta/accounts/$LEAF_ACCOUNT_ID/nats-users" \
+  -H "Authorization: Bearer $SCP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"$LEAF_USER_NAME\",
+    \"sk_group_id\": \"$DEFAULT_GROUP_ID\"
+  }")
+
+LEAF_USER_ID=$(echo "$CREATE_USER_RESPONSE" | jq -r '.id // empty')
+
+if [ -z "$LEAF_USER_ID" ] || [ "$LEAF_USER_ID" == "null" ]; then
+  echo "ERROR: Failed to create NATS user"
+  echo "Response: $CREATE_USER_RESPONSE"
+  exit 1
+fi
+
+echo "✓ Created NATS user '$LEAF_USER_NAME' with ID: $LEAF_USER_ID"
+echo "$LEAF_USER_ID" >"$ROOT_DIR/.leaf-user-id"
+
+# Get the user credentials
+echo "Fetching user credentials..."
+CREDS_RESPONSE=$(curl -s -X POST \
+  "http://localhost:8080/api/core/beta/nats-users/$LEAF_USER_ID/creds" \
+  -H "Authorization: Bearer $SCP_TOKEN")
+
+if [ -z "$CREDS_RESPONSE" ] || [ "$CREDS_RESPONSE" == "null" ]; then
+  echo "ERROR: Failed to fetch user credentials"
+  exit 1
+fi
+
+# Save the credentials
+echo "$CREDS_RESPONSE" >"$ROOT_DIR/.leaf.creds"
+echo "✓ User credentials saved to .leaf.creds"
 
 echo ""
 echo "=== Leaf Account Setup Complete ==="
 echo "Account Name: $LEAF_ACCOUNT_NAME"
 echo "Account ID: $LEAF_ACCOUNT_ID"
+echo "User Name: $LEAF_USER_NAME"
 echo ""
 echo "Files created:"
 echo "  - .leaf-account-id: Account identifier"
-echo "  - .leaf-jwt: Account JWT for leaf node configuration"
-echo "  - .leaf-credentials: Human-readable account credentials"
+echo "  - .leaf-jwt: Account JWT"
+echo "  - .leaf-credentials: Account credentials"
+echo "  - .leaf-user-id: User identifier"
+echo "  - .leaf.creds: User credentials for leaf node authentication"
 echo ""
-echo "✅ Infrastructure Ready:"
-echo "  ✓ LEAF_ACCOUNT configured in SCP with unlimited leaf connections"
+echo "✅ Setup Complete:"
+echo "  ✓ LEAF_ACCOUNT configured in SCP"
+echo "  ✓ User '$LEAF_USER_NAME' created in Default signing key group"
+echo "  ✓ User credentials saved to .leaf.creds"
 echo "  ✓ NATS Core cluster accepting leaf connections on port 7422"
-echo "  ✓ Account JWT available for leaf node authentication setup"
 echo ""
 echo "📋 Next Steps:"
-echo "  1. Create groups and users through SCP Web UI as outlined above"
-echo "  2. Download user credentials (JWT + private key) from SCP"
-echo "  3. Configure leaf nodes with user credentials for authentication"
-echo "  4. Test leaf connection: make test-leaf-connection"
+echo "  1. Copy .leaf.creds to ../nats-leaf-tf/ directory"
+echo "  2. Deploy leaf cluster: cd ../nats-leaf-tf && make apply"
+echo "  3. Test leaf connection: make test"

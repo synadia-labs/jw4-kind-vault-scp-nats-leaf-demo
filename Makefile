@@ -99,15 +99,53 @@ status: ## Check status of all components
 	fi
 	@echo ""
 	@echo "$(YELLOW)Namespaces:$(RESET)"
-	@kubectl get ns vault scp nats 2>/dev/null | tail -n +2 | awk '{printf "  %-10s %s\n", $$1, $$2}' || true
+	@kubectl get ns vault scp nats leaf-nats 2>/dev/null | tail -n +2 | awk '{printf "  %-10s %s\n", $$1, $$2}' || true
 	@echo ""
 	@echo "$(YELLOW)Pods by Namespace:$(RESET)"
-	@for ns in vault scp nats; do \
+	@for ns in vault scp nats leaf-nats; do \
 		if kubectl get ns $$ns >/dev/null 2>&1; then \
 			echo "  $$ns:"; \
-			kubectl get pods -n $$ns --no-headers 2>/dev/null | awk '{printf "    %-30s %s\n", $$1, $$3}' || echo "    No pods found"; \
+			kubectl get pods -n $$ns --no-headers 2>/dev/null | awk '{printf "    %-30s %-10s %s\n", $$1, $$2, $$3}' || echo "    No pods found"; \
 		fi; \
 	done
+	@echo ""
+	@echo "$(YELLOW)NATS Core Cluster:$(RESET)"
+	@if kubectl get ns nats >/dev/null 2>&1; then \
+		POD=$$(kubectl get pods -n nats -l app.kubernetes.io/name=nats -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+		if [ -n "$$POD" ]; then \
+			echo "$(GREEN)✓ NATS Core running$(RESET)"; \
+			kubectl exec -n nats $$POD -- wget -q -O - http://localhost:8222/varz 2>/dev/null | grep -E '"server_id"|"version"|"connections"|"routes"|"leafnodes"' | sed 's/^/  /' || true; \
+			LEAFCOUNT=$$(kubectl exec -n nats $$POD -- wget -q -O - http://localhost:8222/leafz 2>/dev/null | grep -o '"leafnodes":[0-9]*' | cut -d: -f2 || echo "0"); \
+			echo "  Leaf nodes connected: $$LEAFCOUNT"; \
+		else \
+			echo "$(RED)✗ NATS Core not running$(RESET)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)○ NATS Core not deployed$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(YELLOW)NATS Leaf Cluster:$(RESET)"
+	@if kubectl get ns leaf-nats >/dev/null 2>&1; then \
+		READY=$$(kubectl get statefulset -n leaf-nats nats-leaf -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0"); \
+		DESIRED=$$(kubectl get statefulset -n leaf-nats nats-leaf -o jsonpath='{.status.replicas}' 2>/dev/null || echo "0"); \
+		if [ "$$READY" = "$$DESIRED" ] && [ "$$READY" -gt 0 ]; then \
+			echo "$(GREEN)✓ NATS Leaf running ($$READY/$$DESIRED replicas)$(RESET)"; \
+			kubectl logs -n leaf-nats nats-leaf-0 nats 2>/dev/null | grep -E "Leafnode connection created" | tail -1 | sed 's/^/  /' || echo "  No connection logs found"; \
+		else \
+			echo "$(RED)✗ NATS Leaf not ready ($$READY/$$DESIRED replicas)$(RESET)"; \
+		fi; \
+	else \
+		echo "$(YELLOW)○ NATS Leaf not deployed$(RESET)"; \
+	fi
+	@echo ""
+	@echo "$(YELLOW)Service URLs:$(RESET)"
+	@echo "  Vault UI:       http://localhost:8200 (port-forward required)"
+	@echo "  SCP UI:         http://localhost:8080 (port-forward required)"
+	@echo "  NATS Core:      nats://localhost:4222 (port-forward required)"
+	@echo "  NATS Monitor:   http://localhost:8222 (port-forward required)"
+	@if kubectl get ns leaf-nats >/dev/null 2>&1; then \
+		echo "  NATS Leaf:      nats://localhost:4223 (port-forward to 4222 required)"; \
+	fi
 
 test: ## Run tests for all components
 	@echo "$(BLUE)Running integration tests...$(RESET)"

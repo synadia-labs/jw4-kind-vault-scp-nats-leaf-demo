@@ -10,12 +10,6 @@ variable "nats_namespace" {
   default     = "nats"
 }
 
-variable "create_namespace" {
-  description = "Create the namespace if it doesn't exist"
-  type        = bool
-  default     = true
-}
-
 variable "release_name" {
   description = "Helm release name"
   type        = string

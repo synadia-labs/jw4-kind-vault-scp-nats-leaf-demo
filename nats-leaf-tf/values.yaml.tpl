@@ -1,154 +1,111 @@
-# NATS Leaf Node Configuration
-nats:
-  image:
-    repository: nats
-    tag: "2.10.20-alpine"
-    pullPolicy: IfNotPresent
+# NATS Leaf Helm Values
+# Generated from template - DO NOT EDIT DIRECTLY
 
-# Cluster configuration
-cluster:
-  enabled: true
-  replicas: ${cluster_size}
-  
-  # Anti-affinity to spread leaf nodes across different nodes
-  podAntiAffinity:
-    preferredDuringSchedulingIgnoredDuringExecution:
-    - weight: 100
-      podAffinityTerm:
-        labelSelector:
-          matchExpressions:
-          - key: app.kubernetes.io/name
-            operator: In
-            values:
-            - nats
-        topologyKey: kubernetes.io/hostname
-
-# Container configuration
-container:
-  env:
-    GOMEMLIMIT: 75MiB
-  
-  # Resource management
-  resources:
-    requests:
-      cpu: "${resources.requests.cpu}"
-      memory: "${resources.requests.memory}"
-    limits:
-      cpu: "${resources.limits.cpu}"
-      memory: "${resources.limits.memory}"
-
-# NATS Configuration
 config:
-  # Enable cluster mode
   cluster:
     enabled: true
-    port: 6222
-
-  # Client connections
-  port: 4222
-
-  # Monitoring
-%{ if enable_monitoring ~}
-  monitor:
-    enabled: true
-    port: 8222
-%{ endif ~}
-
-  # JetStream configuration
-%{ if jetstream_enabled ~}
+    replicas: 3
+    name: nats-leaf
+  
   jetstream:
     enabled: true
     fileStore:
-      pvc:
-        size: "${jetstream_storage_size}"
-        storageClassName: ""
-    memStore:
       enabled: true
-      maxSize: 256Mi
-%{ endif ~}
-
-  # Leaf node configuration - connect to core NATS
+      storageDirectory: /data/jetstream
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClassName: standard
+    memoryStore:
+      enabled: true
+      maxSize: 1Gi
+  
   leafnodes:
     enabled: true
-    remotes:
-    - url: "${leaf_remote_url}"
-      # Use credentials from secret
-      credentials: "/etc/nats-creds/leaf.creds"
-
-  # Merge additional configuration
-  merge:
-    # Basic server settings
-    max_connections: 64K
-    max_subscriptions: 0
-    max_control_line: 4KB
-    max_payload: 1MB
-    max_pending: 64MB
-    
-    # Connection timeouts
-    ping_interval: "2m"
-    ping_max: 2
-    write_deadline: "10s"
-    
-    # Logging
-    log_time: true
-    debug: false
-    trace: false
-    logtime: true
-
-# Service configuration
-service:
-  enabled: true
-  type: ClusterIP
+    noAdvertise: true
+    port: 7422
   
-  # Client connections
+  monitor:
+    enabled: true
+    port: 8222
+  
+  resolver:
+    enabled: true
+    merge:
+      type: full
+      interval: 2m
+      timeout: 1.9s
+  
+  merge:
+    operator: |
+${OPERATOR_JWT}
+    system_account: ${SYSTEM_ACCOUNT_ID}
+    resolver_preload:
+${RESOLVER_PRELOAD}
+    leafnodes:
+      remotes:
+      - urls:
+        - "nats://nats.nats.svc.cluster.local:7422"
+        credentials: "/etc/nats-creds/leaf.creds"
+        account: "${LEAF_ACCOUNT_ID}"
+
+configMap:
+  name: nats-leaf-config
+
+service:
+  name: nats-leaf
   ports:
-    client:
+    nats:
       port: 4222
-    
-    # Cluster connections
-    cluster:
-      port: 6222
-    
-%{ if enable_monitoring ~}
-    # Monitoring
     monitor:
+      enabled: true
       port: 8222
-%{ endif ~}
 
-# Storage for JetStream and credentials
-podTemplate:
-  spec:
-    volumes:
-    - name: leaf-creds
-      secret:
-        secretName: leaf-credentials
-    containers:
-    - name: nats
-      volumeMounts:
-      - name: leaf-creds
-        mountPath: /etc/nats-creds
-        readOnly: true
+headlessService:
+  name: nats-leaf-headless
 
-# Security context
-podSecurityContext:
-  fsGroup: 1000
-  runAsUser: 1000
-  runAsNonRoot: true
-
-# Service account
-serviceAccount:
+promExporter:
   enabled: true
-  name: ""
+  port: 7777
+  image:
+    repository: natsio/prometheus-nats-exporter
+    tag: latest
+    pullPolicy: IfNotPresent
 
-# Network policies (disabled by default)
-networkPolicy:
-  enabled: false
+natsBox:
+  enabled: true
 
-# Pod disruption budget
 podDisruptionBudget:
   enabled: true
   maxUnavailable: 1
 
-# Horizontal Pod Autoscaler (disabled for leaf nodes)
-autoscaling:
-  enabled: false
+statefulSet:
+  name: nats-leaf
+
+podTemplate:
+  configChecksumAnnotation: true
+  patch:
+  - op: add
+    path: /spec/volumes/-
+    value:
+      name: leaf-creds
+      secret:
+        secretName: leaf-credentials
+  - op: add
+    path: /spec/volumes/-
+    value:
+      name: operator-config
+      secret:
+        secretName: nats-operator-config
+  - op: add
+    path: /spec/containers/0/volumeMounts/-
+    value:
+      name: leaf-creds
+      mountPath: /etc/nats-creds
+      readOnly: true
+  - op: add
+    path: /spec/containers/0/volumeMounts/-
+    value:
+      name: operator-config
+      mountPath: /etc/nats-operator
+      readOnly: true

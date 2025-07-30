@@ -14,10 +14,8 @@ locals {
   resolver_preload    = fileexists("${path.module}/.resolver-preload") ? file("${path.module}/.resolver-preload") : "{}"
 }
 
-# Create namespace if specified
+# Create namespace
 resource "kubernetes_namespace" "nats" {
-  count = var.create_namespace ? 1 : 0
-
   metadata {
     name = var.nats_namespace
 
@@ -34,7 +32,7 @@ resource "kubernetes_secret" "nats_operator" {
 
   metadata {
     name      = "nats-operator-config"
-    namespace = var.nats_namespace
+    namespace = kubernetes_namespace.nats.metadata[0].name
   }
 
   data = {
@@ -52,8 +50,8 @@ resource "helm_release" "nats" {
   repository       = var.nats_helm_repository
   chart            = var.nats_helm_chart
   version          = var.nats_chart_version
-  namespace        = var.nats_namespace
-  create_namespace = false # We handle namespace creation separately
+  namespace        = kubernetes_namespace.nats.metadata[0].name
+  create_namespace = false
 
   values = [
     file("${path.module}/values.yaml")
