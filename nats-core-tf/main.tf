@@ -12,6 +12,12 @@ locals {
   operator_jwt        = local.operator_jwt_exists ? file("${path.module}/.operator-jwt") : ""
   system_account      = fileexists("${path.module}/.system-account") ? file("${path.module}/.system-account") : ""
   resolver_preload    = fileexists("${path.module}/.resolver-preload") ? file("${path.module}/.resolver-preload") : "{}"
+
+  # TLS certificates
+  tls_cert_exists = fileexists("${path.module}/.server-cert.pem")
+  tls_cert        = local.tls_cert_exists ? file("${path.module}/.server-cert.pem") : ""
+  tls_key         = local.tls_cert_exists ? file("${path.module}/.server-key.pem") : ""
+  tls_ca          = local.tls_cert_exists ? file("${path.module}/.ca-cert.pem") : ""
 }
 
 # Create namespace
@@ -44,6 +50,24 @@ resource "kubernetes_secret" "nats_operator" {
   depends_on = [kubernetes_namespace.nats]
 }
 
+# Create TLS certificate secret
+resource "kubernetes_secret" "nats_server_tls" {
+  count = local.tls_cert_exists ? 1 : 0
+
+  metadata {
+    name      = "nats-server-tls"
+    namespace = kubernetes_namespace.nats.metadata[0].name
+  }
+
+  data = {
+    "tls.crt" = local.tls_cert
+    "tls.key" = local.tls_key
+    "ca.crt"  = local.tls_ca
+  }
+
+  depends_on = [kubernetes_namespace.nats]
+}
+
 # Deploy NATS using Helm
 resource "helm_release" "nats" {
   name             = var.release_name
@@ -64,7 +88,8 @@ resource "helm_release" "nats" {
 
   depends_on = [
     kubernetes_namespace.nats,
-    kubernetes_secret.nats_operator
+    kubernetes_secret.nats_operator,
+    kubernetes_secret.nats_server_tls
   ]
 }
 

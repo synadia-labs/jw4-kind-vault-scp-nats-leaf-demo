@@ -7,7 +7,8 @@ LEAF_CLUSTER_NAME ?= nats-leaf
 help:
 	@echo "NATS Leaf Terraform Commands:"
 	@echo "  make init        - Initialize Terraform"
-	@echo "  make apply       - Deploy NATS leaf cluster"
+	@echo "  make generate-tls - Generate TLS certificates from Vault (auto-run by apply)"
+	@echo "  make apply       - Deploy NATS leaf cluster (generates TLS if needed)"
 	@echo "  make destroy     - Destroy NATS leaf cluster"
 	@echo "  make plan        - Show deployment plan"
 	@echo "  make test        - Test NATS leaf deployment"
@@ -41,6 +42,12 @@ check-leaf-creds:
 	fi
 	@echo "✓ Operator config found"
 
+# Generate TLS certificates
+generate-tls:
+	@echo "Generating TLS certificates from Vault..."
+	@bash scripts/generate-tls-certs.sh
+	@echo "✓ TLS certificates generated"
+
 # Generate values.yaml from template
 values.yaml: values.yaml.tpl check-leaf-creds
 	@echo "Generating values.yaml from template..."
@@ -58,15 +65,15 @@ values.yaml: values.yaml.tpl check-leaf-creds
 	export SYSTEM_ACCOUNT=$$(cat .system-account 2>/dev/null | sed 's/^/      /' || echo "      # No system account") && \
 	export SYSTEM_ACCOUNT_ID=$$(cat .system-account-id 2>/dev/null || echo "") && \
 	export RESOLVER_PRELOAD=$$(cat .resolver-preload 2>/dev/null || echo "        {}") && \
-	export LEAF_ACCOUNT_ID=$$(if [ -f ../nats-core-tf/.leaf-jwt ]; then \
-		python3 -c "import json, base64; jwt=open('../nats-core-tf/.leaf-jwt').read().strip().split('.')[1]; jwt+='='*(-len(jwt)%4); print(json.loads(base64.b64decode(jwt))['sub'])" 2>/dev/null || echo ""; \
+	export LEAF_ACCOUNT_ID=$$(if [ -f .leaf.creds ]; then \
+		sed -n '2p' .leaf.creds | python3 -c "import sys, json, base64; jwt=sys.stdin.read().strip(); payload=jwt.split('.')[1]; payload+='='*(-len(payload)%4); print(json.loads(base64.b64decode(payload))['nats']['issuer_account'])" 2>/dev/null || echo ""; \
 	else \
 		echo ""; \
 	fi) && \
 	envsubst < values.yaml.tpl > values.yaml
 	@echo "values.yaml generated successfully"
-	@if [ -f ../nats-core-tf/.leaf-jwt ]; then \
-		echo "✓ Leaf account ID extracted from JWT: $$(python3 -c "import json, base64; jwt=open('../nats-core-tf/.leaf-jwt').read().strip().split('.')[1]; jwt+='='*(-len(jwt)%4); print(json.loads(base64.b64decode(jwt))['sub'])" 2>/dev/null || echo "ERROR")"; \
+	@if [ -f .leaf.creds ]; then \
+		echo "✓ Leaf account ID extracted from leaf.creds: $$(sed -n '2p' .leaf.creds | python3 -c "import sys, json, base64; jwt=sys.stdin.read().strip(); payload=jwt.split('.')[1]; payload+='='*(-len(payload)%4); print(json.loads(base64.b64decode(payload))['nats']['issuer_account'])" 2>/dev/null || echo "ERROR")"; \
 	fi
 
 # Plan deployment
@@ -75,6 +82,10 @@ plan: init values.yaml
 
 # Apply deployment
 apply: init values.yaml
+	@if [ ! -f .server-cert.pem ]; then \
+		echo "TLS certificates not found. Generating..."; \
+		$(MAKE) generate-tls; \
+	fi
 	terraform apply -auto-approve
 
 # Destroy deployment
@@ -104,6 +115,7 @@ logs:
 # Clean generated files
 clean:
 	@rm -f values.yaml .leaf.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
+	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
 	@rm -f terraform.tfstate* terraform.tfplan
 	@rm -rf .terraform
 	@echo "Cleaned generated files"

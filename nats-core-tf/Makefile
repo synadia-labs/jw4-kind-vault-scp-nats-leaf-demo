@@ -9,7 +9,8 @@ help:
 	@echo "NATS Core Terraform Commands:"
 	@echo "  make init                - Initialize Terraform"
 	@echo "  make setup-system        - Create NATS system in SCP and fetch config"
-	@echo "  make apply               - Deploy NATS core cluster"
+	@echo "  make generate-tls        - Generate TLS certificates from Vault (auto-run by apply)"
+	@echo "  make apply               - Deploy NATS core cluster (generates TLS if needed)"
 	@echo "  make setup-leaf-account  - Configure LEAF_ACCOUNT for leaf nodes (after apply)"
 	@echo "  make test-leaf-connection - Test leaf node connection with local nats-server"
 	@echo "  make destroy             - Destroy NATS core cluster"
@@ -53,6 +54,11 @@ test-leaf-connection: ## Test leaf node connection with local nats-server
 	@echo "Testing leaf node connection..."
 	@bash scripts/test-leaf-connection.sh
 
+# Generate TLS certificates
+generate-tls:
+	@echo "Generating TLS certificates from Vault..."
+	@bash scripts/generate-tls-certs.sh
+	@echo "✓ TLS certificates generated"
 
 # Generate values.yaml from template
 values.yaml: values.yaml.tpl
@@ -72,8 +78,12 @@ values.yaml: values.yaml.tpl
 plan: init values.yaml
 	terraform plan
 
-# Apply deployment
+# Apply deployment  
 apply: init values.yaml
+	@if [ ! -f .server-cert.pem ]; then \
+		echo "TLS certificates not found. Generating..."; \
+		$(MAKE) generate-tls; \
+	fi
 	terraform apply -auto-approve \
 		-var="scp_team_name=$(SCP_TEAM_NAME)" \
 		-var="scp_system_name=$(SCP_SYSTEM_NAME)"
@@ -122,7 +132,8 @@ get-credentials:
 clean:
 	@rm -f values.yaml
 	@rm -f .operator-jwt .system-account .system-account-id .resolver-preload
-	@rm -f .system-id .team-id .leaf-account-id .leaf-credentials .leaf-jwt .leaf-group-id .leaf-user-id .leaf-user-credentials.json .leaf-user.creds
+	@rm -f .system-id .team-id .leaf-account-id .leaf-credentials .leaf-jwt .leaf-group-id .leaf-user-id .leaf-user-credentials.json .leaf-user.creds .leaf.creds
+	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
 	@rm -f .temp-* terraform.tfstate* terraform.tfplan
 	@rm -rf .leaf-test
 	@rm -rf .terraform

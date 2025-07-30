@@ -1,11 +1,20 @@
 # NATS Leaf Helm Values
 # Generated from template - DO NOT EDIT DIRECTLY
 
+# Common CA for all TLS connections
+tlsCA:
+  enabled: true
+  secretName: nats-leaf-tls
+  key: ca.crt
+
 config:
   cluster:
     enabled: true
     replicas: 3
     name: nats-leaf
+    tls:
+      enabled: true
+      secretName: nats-leaf-tls
   
   jetstream:
     enabled: true
@@ -21,7 +30,7 @@ config:
       maxSize: 1Gi
   
   leafnodes:
-    enabled: true
+    enabled: false
     noAdvertise: true
     port: 7422
   
@@ -45,9 +54,11 @@ ${RESOLVER_PRELOAD}
     leafnodes:
       remotes:
       - urls:
-        - "nats://nats.nats.svc.cluster.local:7422"
+        - "tls://nats.nats.svc.cluster.local:7422"
         credentials: "/etc/nats-creds/leaf.creds"
         account: "${LEAF_ACCOUNT_ID}"
+        tls:
+          ca_file: "/etc/nats-ca-cert/ca.crt"
 
 configMap:
   name: nats-leaf-config
@@ -98,6 +109,15 @@ podTemplate:
       secret:
         secretName: nats-operator-config
   - op: add
+    path: /spec/volumes/-
+    value:
+      name: nats-ca
+      secret:
+        secretName: nats-leaf-tls
+        items:
+        - key: ca.crt
+          path: ca.crt
+  - op: add
     path: /spec/containers/0/volumeMounts/-
     value:
       name: leaf-creds
@@ -108,4 +128,10 @@ podTemplate:
     value:
       name: operator-config
       mountPath: /etc/nats-operator
+      readOnly: true
+  - op: add
+    path: /spec/containers/0/volumeMounts/-
+    value:
+      name: nats-ca
+      mountPath: /etc/nats-ca
       readOnly: true

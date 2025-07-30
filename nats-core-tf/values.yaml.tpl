@@ -1,11 +1,20 @@
 # NATS Core Helm Values
 # Generated from template - DO NOT EDIT DIRECTLY
 
+# Common CA for all TLS connections
+tlsCA:
+  enabled: true
+  secretName: nats-server-tls
+  key: ca.crt
+
 config:
   cluster:
     enabled: true
     replicas: 3
-    name: nats-core
+    name: nats
+    tls:
+      enabled: true
+      secretName: nats-server-tls
   
   jetstream:
     enabled: true
@@ -25,6 +34,9 @@ config:
     port: 7422
     # Leaf nodes authenticate using LEAF_ACCOUNT credentials from SCP
     # Run 'make setup-leaf-account' after deployment to configure
+    tls:
+      enabled: true
+      secretName: nats-server-tls
   
   monitor:
     enabled: true
