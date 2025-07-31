@@ -60,6 +60,7 @@ values.yaml: values.yaml.tpl check-leaf-creds
 		cp ../nats-core-tf/.system-account-id .system-account-id; \
 		cp ../nats-core-tf/.resolver-preload .resolver-preload; \
 		cp ../nats-core-tf/.leaf-account-id .leaf-account-id 2>/dev/null || true; \
+		cp ../nats-core-tf/.sys-user.creds .sys-user.creds 2>/dev/null || true; \
 	fi
 	@export OPERATOR_JWT=$$(cat .operator-jwt 2>/dev/null | sed 's/^/      /' || echo "      # No operator JWT") && \
 	export SYSTEM_ACCOUNT=$$(cat .system-account 2>/dev/null | sed 's/^/      /' || echo "      # No system account") && \
@@ -93,7 +94,7 @@ destroy: init
 	@echo "Destroying Terraform resources..."
 	terraform destroy -auto-approve
 	@echo "Cleaning up all generated files..."
-	@rm -f values.yaml .leaf.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
+	@rm -f values.yaml .leaf.creds .sys-user.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
 	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
 	@rm -f terraform.tfstate* terraform.tfplan *.tfplan
 	@rm -rf .terraform .terraform.lock.hcl
@@ -118,7 +119,7 @@ logs:
 
 # Clean generated files
 clean:
-	@rm -f values.yaml .leaf.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
+	@rm -f values.yaml .leaf.creds .sys-user.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
 	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
 	@rm -f terraform.tfstate* terraform.tfplan
 	@rm -rf .terraform

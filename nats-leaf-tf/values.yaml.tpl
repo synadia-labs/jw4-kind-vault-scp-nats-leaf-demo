@@ -53,10 +53,16 @@ ${OPERATOR_JWT}
 ${RESOLVER_PRELOAD}
     leafnodes:
       remotes:
-      - urls:
-        - "tls://nats.nats.svc.cluster.local:7422"
+      - account: "${LEAF_ACCOUNT_ID}"
         credentials: "/etc/nats-creds/leaf.creds"
-        account: "${LEAF_ACCOUNT_ID}"
+        urls:
+        - "tls://nats.nats.svc.cluster.local:7422"
+        tls:
+          ca_file: "/etc/nats-ca-cert/ca.crt"
+      - account: "${SYSTEM_ACCOUNT_ID}"
+        credentials: "/etc/nats-creds/sys-user.creds"
+        urls:
+        - "tls://nats.nats.svc.cluster.local:7422"
         tls:
           ca_file: "/etc/nats-ca-cert/ca.crt"
 

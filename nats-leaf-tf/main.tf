@@ -3,6 +3,9 @@ locals {
   leaf_creds_exists = fileexists("${path.module}/.leaf.creds")
   leaf_creds        = local.leaf_creds_exists ? file("${path.module}/.leaf.creds") : ""
 
+  sys_user_creds_exists = fileexists("${path.module}/.sys-user.creds")
+  sys_user_creds        = local.sys_user_creds_exists ? file("${path.module}/.sys-user.creds") : ""
+
   operator_jwt_exists = fileexists("${path.module}/.operator-jwt")
   operator_jwt        = local.operator_jwt_exists ? file("${path.module}/.operator-jwt") : ""
   system_account      = fileexists("${path.module}/.system-account") ? file("${path.module}/.system-account") : ""
@@ -37,7 +40,8 @@ resource "kubernetes_secret" "leaf_credentials" {
   }
 
   data = {
-    "leaf.creds" = local.leaf_creds
+    "leaf.creds"     = local.leaf_creds
+    "sys-user.creds" = local.sys_user_creds
   }
 
   depends_on = [kubernetes_namespace.nats_leaf]

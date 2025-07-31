@@ -9,6 +9,7 @@ terraform.tfplan
 
 # Credentials
 .leaf.creds
+.sys-user.creds
 .operator-jwt
 .system-account
 .system-account-id
