@@ -1,4 +1,4 @@
-.PHONY: help apply destroy plan init fmt validate test port-forward logs get-credentials clean setup-system cleanup-scp setup-leaf-account status
+.PHONY: help apply destroy plan init fmt validate test port-forward logs get-credentials clean setup-system cleanup-scp setup-leaf-account setup-sys-user status
 
 # Configuration
 SCP_TEAM_NAME ?= nats-team
@@ -12,6 +12,7 @@ help:
 	@echo "  make generate-tls        - Generate TLS certificates from Vault (auto-run by apply)"
 	@echo "  make apply               - Deploy NATS core cluster (generates TLS if needed)"
 	@echo "  make setup-leaf-account  - Configure LEAF_ACCOUNT for leaf nodes (after apply)"
+	@echo "  make setup-sys-user      - Create system user in SYS account for monitoring"
 	@echo "  make test-leaf-connection - Test leaf node connection with local nats-server"
 	@echo "  make destroy             - Destroy NATS core cluster"
 	@echo "  make plan                - Show deployment plan"
@@ -49,6 +50,11 @@ setup-system:
 setup-leaf-account: ## Create LEAF_ACCOUNT in SCP for leaf node connections
 	@echo "Setting up leaf account in SCP..."
 	@bash scripts/setup-leaf-account.sh
+
+# Setup system user in SYS account (requires NATS to be connected)
+setup-sys-user: ## Create system user in SYS account for monitoring
+	@echo "Setting up system user in SCP..."
+	@bash scripts/setup-sys-user.sh
 
 test-leaf-connection: ## Test leaf node connection with local nats-server
 	@echo "Testing leaf node connection..."
@@ -88,9 +94,11 @@ apply: init values.yaml
 		-var="scp_team_name=$(SCP_TEAM_NAME)" \
 		-var="scp_system_name=$(SCP_SYSTEM_NAME)"
 	@echo "Waiting for NATS pods to be ready..."
-	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nats -n $(shell terraform output -raw namespace 2>/dev/null || echo "nats") --timeout=300s
+	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nats -n nats --timeout=300s
 	@echo "Setting up leaf account..."
 	@$(MAKE) setup-leaf-account || echo "Note: Leaf account setup failed, but core NATS is deployed"
+	@echo "Setting up system user..."
+	@$(MAKE) setup-sys-user || echo "Note: System user setup failed, but core NATS is deployed"
 
 # Clean up SCP system only
 cleanup-scp: ## Remove NATS system from SCP
@@ -102,10 +110,19 @@ destroy: init
 	@bash scripts/cleanup-scp-system.sh || true
 	@echo "Destroying Terraform resources..."
 	terraform destroy -auto-approve
-	@echo "Cleaning up generated files..."
+	@echo "Cleaning up all generated files..."
 	@rm -f values.yaml
 	@rm -f .operator-jwt .system-account .system-account-id .resolver-preload
-	@rm -f .system-id .team-id .leaf-account-id .leaf-credentials .leaf-jwt .leaf-group-id .leaf-user-id .leaf-user-credentials.json .leaf-user.creds
+	@rm -f .system-id .team-id .leaf-account-id .leaf-credentials .leaf-jwt .leaf-group-id .leaf-user-id .leaf-user-credentials.json .leaf-user.creds .leaf.creds
+	@rm -f .sys-user-id .sys-user.creds .sys-jwt
+	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
+	@rm -f *.creds *.jwt *.key *.pem
+	@rm -f .temp-* terraform.tfstate* terraform.tfplan *.tfplan
+	@rm -rf .leaf-test .sys-user-test
+	@rm -rf .terraform .terraform.lock.hcl
+	@rm -f override.tf override.tf.json *_override.tf *_override.tf.json
+	@rm -f crash.log crash.*.log
+	@rm -f *.tmp *.bak
 	@echo "✓ Cleanup complete"
 
 # Test NATS deployment
@@ -133,6 +150,7 @@ clean:
 	@rm -f values.yaml
 	@rm -f .operator-jwt .system-account .system-account-id .resolver-preload
 	@rm -f .system-id .team-id .leaf-account-id .leaf-credentials .leaf-jwt .leaf-group-id .leaf-user-id .leaf-user-credentials.json .leaf-user.creds .leaf.creds
+	@rm -f .sys-user-id .sys-user.creds .sys-jwt
 	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
 	@rm -f .temp-* terraform.tfstate* terraform.tfplan
 	@rm -rf .leaf-test
@@ -185,4 +203,9 @@ status:
 		echo "  ✓ Leaf credentials created"; \
 	else \
 		echo "  ✗ Leaf credentials not created (run 'make setup-leaf-account')"; \
+	fi
+	@if [ -f .sys-user.creds ]; then \
+		echo "  ✓ System user credentials created"; \
+	else \
+		echo "  ✗ System user not created (run 'make setup-sys-user')"; \
 	fi

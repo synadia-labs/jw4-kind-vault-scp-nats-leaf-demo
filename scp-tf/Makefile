@@ -27,6 +27,13 @@ destroy: ## Destroy SCP installation
 	@terraform destroy -auto-approve $(TF_VARS)
 	@echo "Cleaning up persistent volumes..."
 	@kubectl delete pvc -n scp --all --ignore-not-found=true 2>/dev/null || true
+	@echo "Cleaning up all generated files..."
+	@rm -rf .terraform .terraform.lock.hcl terraform.tfstate* *.tfplan
+	@rm -f .admin-password .api-token .team-id .project-id control-plane-values.yaml
+	@rm -f scp-credentials.json .admin-status
+	@rm -f *.jwt license.jwt
+	@rm -f override.tf override.tf.json *_override.tf *_override.tf.json
+	@rm -f crash.log crash.*.log
 
 clean: destroy ## Clean up all resources and files
 	@echo "Cleaning up..."

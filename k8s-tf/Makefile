@@ -27,6 +27,13 @@ up: check-prereqs ## Create and start the cluster
 down: ## Destroy the cluster
 	@echo "Destroying KIND cluster..."
 	@export KUBECONFIG=$(KUBECONFIG) && terraform destroy -auto-approve
+	@echo "Cleaning up all generated files..."
+	@rm -rf .terraform .terraform.lock.hcl terraform.tfstate* *.tfplan tfplan
+	@rm -f kind-config-generated.yaml
+	@rm -f *.pem *.key *.crt *.p12 *.json
+	@rm -f override.tf override.tf.json *_override.tf *_override.tf.json
+	@rm -f *.log
+	@rm -f *.backup *.bak
 	@echo "✅ Cluster destroyed!"
 
 status: ## Show cluster status

@@ -92,8 +92,12 @@ apply: init values.yaml
 destroy: init
 	@echo "Destroying Terraform resources..."
 	terraform destroy -auto-approve
-	@echo "Cleaning up generated files..."
+	@echo "Cleaning up all generated files..."
 	@rm -f values.yaml .leaf.creds .operator-jwt .system-account .system-account-id .resolver-preload .leaf-account-id
+	@rm -f .server-cert.pem .server-key.pem .ca-cert.pem
+	@rm -f terraform.tfstate* terraform.tfplan *.tfplan
+	@rm -rf .terraform .terraform.lock.hcl
+	@rm -f .temp-*
 	@echo "✓ Cleanup complete"
 
 # Test NATS leaf deployment

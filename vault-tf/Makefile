@@ -38,6 +38,13 @@ apply: check-root-ca ## Deploy Vault and configure PKI
 destroy: ## Destroy Vault installation
 	@echo "Destroying Vault..."
 	@terraform destroy -auto-approve -var="root_ca_path=$(ROOT_CA_PATH)" || true
+	@echo "Cleaning up all generated files..."
+	@rm -rf .terraform .terraform.lock.hcl terraform.tfstate* *.tfplan
+	@rm -f override.tf override.tf.json *_override.tf *_override.tf.json
+	@rm -f crash.log crash.*.log
+	@rm -f *.tmp *.temp
+	@rm -f intermediate.csr intermediate.crt intermediate-bundle.crt
+	@rm -f vault-init.json .vault-token .unseal-keys
 
 clean: destroy ## Clean up all resources
 	@echo "Cleaning up..."
